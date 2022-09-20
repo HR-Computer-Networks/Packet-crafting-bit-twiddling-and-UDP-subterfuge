@@ -26,25 +26,38 @@ bool port_is_open(int portno) {
 
     int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
 
-	// Connect to remote address
-	if( connect( sock_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        cout << portno << " closed!" << endl;
-		return false;
-	}
+	int res = sendto(sock_fd, "test", sizeof("test")-1, 0, (sockaddr*)&serv_addr, sizeof(serv_addr));
+
+
+    int recVal = 0;
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(sock_fd, &rfds);
+
+    // We wait 0.001s
+    struct timeval tv;
+    tv.tv_usec = 300000;
+    tv.tv_sec = 0;
+
+    recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
+    if (recVal == 0) {
+        return false;
+    }
     else {
-        cout << portno << " open!" << endl;
+        cout << portno << endl;
         return true;
     }
-    close(sock_fd);
 }
 
 int main(int argc, char **argv) {
 	// should be given 2 arguments exactly: IP address, port
 	// all other arguments ignored
-	if(argc<3) { 
+	if(argc<4) { 
 		printf("usage: server <serverip> <low_port> <high_port>\n"); 
 		exit(1);
 	}
+
+    int sock = 0;
 
     // set block of memory
 	memset(&serv_addr, 0, sizeof(serv_addr));
@@ -63,7 +76,7 @@ int main(int argc, char **argv) {
 	}
 
     cout << "Open ports:" << endl;
-    for (int i=low_portno; i<high_portno; i++) {
+    for (int i=low_portno; i<=high_portno; i++) {
         port_is_open(i);
     }
 }
