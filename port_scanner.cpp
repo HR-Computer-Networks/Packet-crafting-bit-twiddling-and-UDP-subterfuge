@@ -19,15 +19,23 @@ using namespace std;
 // has members sin_family, sin_port, sin_addr...
 struct sockaddr_in serv_addr;
 
-bool port_is_open(int portno) {
+void port_is_open(int portno) {
+
+    char buffer[100];
 
     // sets target port number to big-endian storage
 	serv_addr.sin_port = htons( portno );
 
+    // create a socket data structure
     int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
 
-	int res = sendto(sock_fd, "test", sizeof("test")-1, 0, (sockaddr*)&serv_addr, sizeof(serv_addr));
+    // send a message via UDP to watch for a response
+	int res = sendto(sock_fd, "test", sizeof("test")-1, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
 
+    socklen_t length = sizeof(serv_addr);
+    // receive from
+    // int nread = recvfrom(sock_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)&serv_addr, &length);
+    // printf("from %s,%d: %s\n", inet_ntoa(serv_addr.sin_addr), serv_addr.sin_port, buffer);
 
     int recVal = 0;
     fd_set rfds;
@@ -36,16 +44,19 @@ bool port_is_open(int portno) {
 
     // We wait 0.001s
     struct timeval tv;
-    tv.tv_usec = 300000;
-    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    tv.tv_sec = 3.0;
 
     recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
     if (recVal == 0) {
-        return false;
+        return;
+    }
+    else if (recVal == -1) {
+        cout << "Error" << endl;
     }
     else {
         cout << portno << endl;
-        return true;
+        return;
     }
 }
 
