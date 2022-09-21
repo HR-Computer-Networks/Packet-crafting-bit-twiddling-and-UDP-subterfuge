@@ -19,7 +19,7 @@ using namespace std;
 // has members sin_family, sin_port, sin_addr...
 struct sockaddr_in serv_addr;
 
-void port_is_open(int portno) {
+bool port_is_open(int portno) {
 
     char buffer[100];
 
@@ -43,19 +43,20 @@ void port_is_open(int portno) {
     FD_SET(sock_fd, &rfds);
 
     struct timeval tv;
-    tv.tv_usec = 0;
-    tv.tv_sec = 1.0;
+    tv.tv_usec = 100000;
+    tv.tv_sec = 0.0;
 
     recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
     if (recVal == 0) {
-        return;
+        return false;
     }
     else if (recVal == -1) {
         cout << "Error" << endl;
+        return false;
     }
     else {
         cout << portno << endl;
-        return;
+        return true;
     }
 }
 

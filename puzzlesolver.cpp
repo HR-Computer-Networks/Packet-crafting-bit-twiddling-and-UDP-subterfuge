@@ -78,10 +78,12 @@ string knock() {
 }
 
 
-// get first secret port
-
-
 int main(int argc, char* argv[]) {
+
+    // Setup socket address structure for connection struct
+    // has members sin_family, sin_port, sin_addr...
+    struct sockaddr_in serv_addr;
+
     const char* hostname;
     int ports[4];
 
@@ -89,11 +91,22 @@ int main(int argc, char* argv[]) {
     int sockfd;
     struct timeval tv;
 
-    // look up hostname:
-    // use gethostbyname()
+    // should be given 2 arguments exactly: IP address, port
+	// all other arguments ignored
+	if(argc<4) { 
+		printf("usage: server <serverip> <port_1> <port_2> <port_3> <port_4>\n"); 
+		exit(1);
+	}
 
-    // create the socket:
-    // use the socket function
+    int sock = 0;
+
+    // set block of memory
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET ;
+
+    // only works with ip address, not with hostname
+	char *server_ip = argv[1];
+	int ports[] = { atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]) };
 
     // set timeout for socket operations
     // use the timeval tv to set values you desire
