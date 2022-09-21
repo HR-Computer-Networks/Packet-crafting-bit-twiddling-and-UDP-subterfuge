@@ -42,10 +42,9 @@ void port_is_open(int portno) {
     FD_ZERO(&rfds);
     FD_SET(sock_fd, &rfds);
 
-    // We wait 0.001s
     struct timeval tv;
     tv.tv_usec = 0;
-    tv.tv_sec = 3.0;
+    tv.tv_sec = 1.0;
 
     recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
     if (recVal == 0) {

@@ -29,6 +29,33 @@ uint32_t wrapsum(...) {
 
 int solve_evil_port(int sockfd, struct hostent* host, int port) {
     // make a UDP header and an IP with right checksums
+
+    char datagram[4096];
+    memset(datagram, 0, sizeof(datagram));
+    int datagram_length;
+    struct ip* ip = (struct ip*) datagram;
+
+    ip-> ip_v 
+    ip-> ip_hl
+    ip-> ip_tos
+    ip -> ip_len
+    ip -> ip_id
+    ip -> ip_off
+    ip->ip_ttl
+    ip->ip_p
+    ip->ip_sum
+
+    // we'll get our own IP address and port by looking at
+    // the src address of the socket that we used to
+    // talk to the server
+
+    struct sockaddr_in own_addr;
+    socklen_t own_addr_len = sizeof(own_addr);
+
+    // use getsockname function
+
+    ip->ip_src = own_addr.sin_addr;
+    ip->ip_dst.s_addr = (uint32_t*)host->h_addr;
 }
 
 int find_right_port(...) {
