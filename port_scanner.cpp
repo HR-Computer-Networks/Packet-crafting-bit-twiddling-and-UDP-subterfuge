@@ -57,6 +57,10 @@ bool port_is_open(int portno) {
     }
     else {
         cout << portno << endl;
+        if(FD_ISSET(sock_fd, &rfds)){ 
+            int n = read(sock_fd, buffer, 256);
+            cout << buffer << endl;
+        }//close else if statement
         return true;
     }
 }
@@ -92,5 +96,3 @@ int main(int argc, char **argv) {
         port_is_open(i);
     }
 }
-
-// terstttt

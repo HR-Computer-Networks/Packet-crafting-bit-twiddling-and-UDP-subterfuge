@@ -1,7 +1,9 @@
-//4001
-// 4008
-// 4011
-// 4090
+// string& passes by reference to a function: the actual memory store
+// string passes by value to a function
+
+// int* n1 creates a pointer variable (will store the address of another var)
+// int n2 creates a regular variable
+// n1 = &n2 passes the memory store / address of n2 to n1
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,108 +14,57 @@
 #include <arpa/inet.h>
 #include <iostream>
 
-
 using namespace std;
 
+// Setup socket address structure for connection struct
+// has members sin_family, sin_port, sin_addr...
+struct sockaddr_in serv_addr;
 
-// string get_udp_response(...) {
-//     // receive from
-
-// }
-
-void send_udp_message(int sockfd, int portno, char *msg, sockaddr_in &serv_addr) {
-    serv_addr.sin_port = htons( portno );
-    int s = sendto(sockfd, msg, sizeof(msg)-1, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
-    if (s < 0) {
-        printf("send failed");
-    }
+string get_udp_response(int portno, char* msg) {
 
     char buffer[2000];
 
-    socklen_t length = sizeof(serv_addr);
-    int nread = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)&serv_addr, &length);
-    printf("from %s,%d: %s\n", inet_ntoa(serv_addr.sin_addr), serv_addr.sin_port, buffer);
-}
-
-// checksum and wrapsum are available online
-// its fine to use those
-// github.com link!!
-// https://github.com/openbsd/src/blob/master/sbin/dhclient/packet.c
-// uint32_t checksum(...) {
-
-// }
-
-// uint32_t wrapsum(...) {
-
-// }
-
-// solving the evil bit puzzle
-
-// int solve_evil_port(int sockfd, struct hostent* host, int port) {
-//     // make a UDP header and an IP with right checksums
-
-//     char datagram[4096];
-//     memset(datagram, 0, sizeof(datagram));
-//     int datagram_length;
-//     struct ip* ip = (struct ip*) datagram;
-
-//     ip-> ip_v 
-//     ip-> ip_hl
-//     ip-> ip_tos
-//     ip -> ip_len
-//     ip -> ip_id
-//     ip -> ip_off
-//     ip->ip_ttl
-//     ip->ip_p
-//     ip->ip_sum
-
-//     // we'll get our own IP address and port by looking at
-//     // the src address of the socket that we used to
-//     // talk to the server
-
-//     struct sockaddr_in own_addr;
-//     socklen_t own_addr_len = sizeof(own_addr);
-
-//     // use getsockname function
-
-//     ip->ip_src = own_addr.sin_addr;
-//     ip->ip_dst.s_addr = (uint32_t*)host->h_addr;
-// }
-
-// int find_right_port(...) {
-
-// }
-
-// // solving the checksum port puzzle
-// string solve_checksum_port() {
-
-// }
-
-// // talk to the oracle
-// vector<int> solve_oracle() {
-//     ...
-// }
-
-// // knocking
-// string knock() {
-//     ...
-// }
-
-
-int main(int argc, char* argv[]) {
-
-    // Setup socket address structure for connection struct
-    // has members sin_family, sin_port, sin_addr...
-    struct sockaddr_in serv_addr;
-    struct hostent* host = NULL;
-
-    const char* hostname;
+    // sets target port number to big-endian storage
+	serv_addr.sin_port = htons( portno );
 
     // create a socket data structure
-    int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP;
-    // struct timeval tv;
+    int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
 
-    // should be given 2 arguments exactly: IP address, port
+    // send a message via UDP to watch for a response
+	int res = sendto(sock_fd, msg, sizeof(msg)-1, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    printf("sending to port %i: %s\n", portno, msg);
+    socklen_t length = sizeof(serv_addr);
+    // receive from
+    // int nread = recvfrom(sock_fd, buffer, sizeof(buffer), 0, (struct sockaddr*)&serv_addr, &length);
+    // printf("from %s,%d: %s\n", inet_ntoa(serv_addr.sin_addr), serv_addr.sin_port, buffer);
+
+    int recVal = 0;
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(sock_fd, &rfds);
+
+    struct timeval tv;
+    tv.tv_usec = 0;
+    tv.tv_sec = 10.0;
+
+    recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
+    if (recVal == 0) {
+        cout << "Timeout" << endl;
+    }
+    else if (recVal == -1) {
+        cout << "Error" << endl;
+    }
+    else {
+        if(FD_ISSET(sock_fd, &rfds)){ 
+            int n = read(sock_fd, buffer, sizeof(buffer)-1);
+        }//close else if statement
+    }
+
+    return buffer;
+}
+
+int main(int argc, char **argv) {
+	// should be given 2 arguments exactly: IP address, port
 	// all other arguments ignored
 	if(argc<4) { 
 		printf("usage: server <serverip> <port_1> <port_2> <port_3> <port_4>\n"); 
@@ -127,18 +78,23 @@ int main(int argc, char* argv[]) {
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET ;
 
-    char msg[] = "test";
-    send_udp_message(sockfd, ports[0], msg, serv_addr);
 
+    // Need to know the IP address of the server we are connecting t
+	// stores the IP address in binary form in serv_addr.sin_addr
+	if( inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0) {
+		perror(" failed to set socket address");
+		exit(0);
+	}
 
-    // set timeout for socket operations
-    // use the timeval tv to set values you desire
+    printf("Relevant ports: %i, %i, %i, %i \n", ports[0], ports[1], ports[2], ports[3]);
+    char probe_msg[] = "test";
+    // get_udp_response(ports[0], probe_msg);
 
-    // solve puzzleports
+    char group_msg[] = "$group_50$";
+    cout << get_udp_response(ports[0], group_msg);
 
-    // talk to oracle
-    // call solve_oracle, need to write
+    cout << get_udp_response(ports[1], probe_msg) << endl;
+    cout << get_udp_response(ports[2], probe_msg) << endl;
+    cout << get_udp_response(ports[3], probe_msg) << endl;
 
-    // knock on hidden ports 
-    // call a knock function, need to write
 }
