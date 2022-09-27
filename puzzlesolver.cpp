@@ -1,81 +1,103 @@
-#include<iostream>
-#include<netdb.h>
-#include<sys/types.h>
+//4001
+// 4008
+// 4011
+// 4090
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <iostream>
+
 
 using namespace std;
 
 
-string get_udp_response(...) {
+// string get_udp_response(...) {
+//     // receive from
 
-}
+// }
 
-string send_udp_message(...) {
+void send_udp_message(int sockfd, int portno, char *msg, sockaddr_in &serv_addr) {
+    serv_addr.sin_port = htons( portno );
+    int s = sendto(sockfd, msg, sizeof(msg)-1, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    if (s < 0) {
+        printf("send failed");
+    }
 
+    char buffer[2000];
+
+    socklen_t length = sizeof(serv_addr);
+    int nread = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)&serv_addr, &length);
+    printf("from %s,%d: %s\n", inet_ntoa(serv_addr.sin_addr), serv_addr.sin_port, buffer);
 }
 
 // checksum and wrapsum are available online
 // its fine to use those
 // github.com link!!
 // https://github.com/openbsd/src/blob/master/sbin/dhclient/packet.c
-uint32_t checksum(...) {
+// uint32_t checksum(...) {
 
-}
+// }
 
-uint32_t wrapsum(...) {
+// uint32_t wrapsum(...) {
 
-}
+// }
 
 // solving the evil bit puzzle
 
-int solve_evil_port(int sockfd, struct hostent* host, int port) {
-    // make a UDP header and an IP with right checksums
+// int solve_evil_port(int sockfd, struct hostent* host, int port) {
+//     // make a UDP header and an IP with right checksums
 
-    char datagram[4096];
-    memset(datagram, 0, sizeof(datagram));
-    int datagram_length;
-    struct ip* ip = (struct ip*) datagram;
+//     char datagram[4096];
+//     memset(datagram, 0, sizeof(datagram));
+//     int datagram_length;
+//     struct ip* ip = (struct ip*) datagram;
 
-    ip-> ip_v 
-    ip-> ip_hl
-    ip-> ip_tos
-    ip -> ip_len
-    ip -> ip_id
-    ip -> ip_off
-    ip->ip_ttl
-    ip->ip_p
-    ip->ip_sum
+//     ip-> ip_v 
+//     ip-> ip_hl
+//     ip-> ip_tos
+//     ip -> ip_len
+//     ip -> ip_id
+//     ip -> ip_off
+//     ip->ip_ttl
+//     ip->ip_p
+//     ip->ip_sum
 
-    // we'll get our own IP address and port by looking at
-    // the src address of the socket that we used to
-    // talk to the server
+//     // we'll get our own IP address and port by looking at
+//     // the src address of the socket that we used to
+//     // talk to the server
 
-    struct sockaddr_in own_addr;
-    socklen_t own_addr_len = sizeof(own_addr);
+//     struct sockaddr_in own_addr;
+//     socklen_t own_addr_len = sizeof(own_addr);
 
-    // use getsockname function
+//     // use getsockname function
 
-    ip->ip_src = own_addr.sin_addr;
-    ip->ip_dst.s_addr = (uint32_t*)host->h_addr;
-}
+//     ip->ip_src = own_addr.sin_addr;
+//     ip->ip_dst.s_addr = (uint32_t*)host->h_addr;
+// }
 
-int find_right_port(...) {
+// int find_right_port(...) {
 
-}
+// }
 
-// solving the checksum port puzzle
-string solve_checksum_port() {
+// // solving the checksum port puzzle
+// string solve_checksum_port() {
 
-}
+// }
 
-// talk to the oracle
-vector<int> solve_oracle() {
-    ...
-}
+// // talk to the oracle
+// vector<int> solve_oracle() {
+//     ...
+// }
 
-// knocking
-string knock() {
-    ...
-}
+// // knocking
+// string knock() {
+//     ...
+// }
 
 
 int main(int argc, char* argv[]) {
@@ -83,13 +105,13 @@ int main(int argc, char* argv[]) {
     // Setup socket address structure for connection struct
     // has members sin_family, sin_port, sin_addr...
     struct sockaddr_in serv_addr;
+    struct hostent* host = NULL;
 
     const char* hostname;
-    int ports[4];
 
-    struct hostent* host = NULL;
-    int sockfd;
-    struct timeval tv;
+    // create a socket data structure
+    int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP;
+    // struct timeval tv;
 
     // should be given 2 arguments exactly: IP address, port
 	// all other arguments ignored
@@ -97,16 +119,17 @@ int main(int argc, char* argv[]) {
 		printf("usage: server <serverip> <port_1> <port_2> <port_3> <port_4>\n"); 
 		exit(1);
 	}
-
-    int sock = 0;
+    int ports[] = { atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]) };
+    // only works with ip address, not with hostname
+	char *server_ip = argv[1];
 
     // set block of memory
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET ;
 
-    // only works with ip address, not with hostname
-	char *server_ip = argv[1];
-	int ports[] = { atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]) };
+    char msg[] = "test";
+    send_udp_message(sockfd, ports[0], msg, serv_addr);
+
 
     // set timeout for socket operations
     // use the timeval tv to set values you desire

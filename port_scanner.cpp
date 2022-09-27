@@ -4,6 +4,7 @@
 // int* n1 creates a pointer variable (will store the address of another var)
 // int n2 creates a regular variable
 // n1 = &n2 passes the memory store / address of n2 to n1
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -44,7 +45,7 @@ bool port_is_open(int portno) {
 
     struct timeval tv;
     tv.tv_usec = 0;
-    tv.tv_sec = 2.0;
+    tv.tv_sec = 3.0;
 
     recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
     if (recVal == 0) {
