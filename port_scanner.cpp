@@ -43,8 +43,8 @@ bool port_is_open(int portno) {
     FD_SET(sock_fd, &rfds);
 
     struct timeval tv;
-    tv.tv_usec = 100000;
-    tv.tv_sec = 0.0;
+    tv.tv_usec = 0;
+    tv.tv_sec = 2.0;
 
     recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
     if (recVal == 0) {
