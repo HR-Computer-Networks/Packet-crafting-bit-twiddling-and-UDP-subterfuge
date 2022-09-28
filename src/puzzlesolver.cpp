@@ -16,6 +16,7 @@ using namespace std;
 // has members sin_family, sin_port, sin_addr...
 struct sockaddr_in serv_addr;
 char buffer[2048];
+const char ip[] = "20.213.80.229";
 
 //send a udp message where the payload is a valid UDP IPv4 packet,
 //that has a valid UDP checksum of 0x4171, and with the source address being 5.105.90.126!
@@ -106,27 +107,28 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
     char datagram[4096] , *data;
 
     memset(datagram, 0, sizeof(datagram));
-    struct ip *ip = (struct ip*) datagram;
+    struct ip *iph = (struct ip*) datagram;
     struct udphdr *udp = (struct udphdr*) (datagram + sizeof(struct ip));
 
     data = datagram + sizeof(struct ip) + sizeof(struct udphdr);
 	strcpy(data , "Hello");
 
-    ip->ip_hl = 5;
-    ip->ip_v = 4;
-    ip->ip_tos = 0;
-    ip->ip_len = sizeof(struct ip*) + sizeof(struct udphdr*) + strlen(data);
-    ip->ip_id = 132;
-    ip->ip_off = 0;
-    ip->ip_ttl = 255;
-    ip->ip_p = IPPROTO_UDP;
-    ip->ip_sum = *checksum;
-    ip->ip_src = *s_addr;
-    ip->ip_dst = serv_addr.sin_addr;
+    iph->ip_hl = 5;
+    iph->ip_v = 4;
+    iph->ip_tos = 0;
+    // cout << sizeof(struct ip)
+    iph->ip_len = sizeof(struct ip) + sizeof(struct udphdr) + strlen(data);
+    iph->ip_id = htonl (54321);
+    iph->ip_off = 0;
+    iph->ip_ttl = 255;
+    iph->ip_p = IPPROTO_UDP;
+    iph->ip_sum = *checksum;
+    iph->ip_src = *s_addr;
+    iph->ip_dst = serv_addr.sin_addr;
 
-    udp->uh_sport = htons(64850);
-    udp->uh_dport = htons(portno);
-    udp->uh_ulen = sizeof(struct udphdr*) + strlen(data);
+    udp->uh_sport = 6666;
+    udp->uh_dport = portno);
+    udp->uh_ulen = 8 + strlen(data);
     udp->uh_sum = *checksum;
     
 
@@ -199,11 +201,11 @@ int main(int argc, char **argv) {
     pch = pch + 1;
 
     unsigned short* given_checksum = new unsigned short;
-    char* given_address;
+    struct in_addr* given_address = new in_addr;
 
     memcpy(given_checksum, pch, sizeof(unsigned short));
     pch = pch + 2;
-    memcpy(given_address, pch, 4);
+    memcpy(given_address, pch, sizeof(in_addr));
 
 
     // [][][][][][][][]
@@ -211,5 +213,5 @@ int main(int argc, char **argv) {
     // dg (char*)
     // ^ iph (iphdr*)
 
-    // solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
+    solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
 }
