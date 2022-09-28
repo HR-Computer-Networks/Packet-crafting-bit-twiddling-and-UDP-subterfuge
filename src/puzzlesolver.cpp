@@ -17,9 +17,14 @@ using namespace std;
 struct sockaddr_in serv_addr;
 char buffer[2048];
 
-//send a udp message where the payload is a valid UDP IPv4 packet,
-//that has a valid UDP checksum of 0x4171, and with the source address being 5.105.90.126!
-
+struct pseudo_header
+{
+	u_int32_t source_address;
+	u_int32_t dest_address;
+	u_int8_t placeholder;
+	u_int8_t protocol;
+	u_int16_t udp_length;
+};
 
 void get_udp_response(int sock_fd, int portno, char* msg) {
 
@@ -65,13 +70,9 @@ void get_udp_response(int sock_fd, int portno, char* msg) {
 }
 
 
-
-// retrieved from
-// https://github.com/openbsd/src/blob/master/sbin/dhclient/packet.c
-uint32_t
-checksum(unsigned char *buf, uint32_t nbytes, uint32_t sum)
-{
-	unsigned int	 i;
+// retrieved from https://github.com/openbsd/src/blob/master/sbin/dhclient/packet.c
+uint32_t check(unsigned char *buf, uint32_t nbytes, uint32_t sum) {
+	unsigned int i;
 
 	/* Checksum all the pairs of bytes first. */
 	for (i = 0; i < (nbytes & ~1U); i += 2) {
@@ -94,8 +95,7 @@ checksum(unsigned char *buf, uint32_t nbytes, uint32_t sum)
 	return sum;
 }
 
-uint32_t
-wrapsum(uint32_t sum)
+uint32_t wrapsum(uint32_t sum)
 {
 	sum = ~sum & 0xFFFF;
 	return htons(sum);
@@ -116,21 +116,25 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
     iph->ip_v = 4;
     iph->ip_tos = 0;
     iph->ip_len = htons(sizeof(struct ip) + sizeof(struct udphdr) + strlen(data));
-    iph->ip_id = htonl (54321);
+    iph->ip_id = 54321;
     iph->ip_off = 0;
     iph->ip_ttl = 255;
     iph->ip_p = IPPROTO_UDP;
-    iph->ip_sum = *checksum;
+
+    // calculate the IP header checksum
+    iph->ip_sum = 0;
+    uint32_t sum = wrapsum(check((unsigned char *)iph, iph->ip_len, 0));
+    iph->ip_sum = 0;
     iph->ip_src = *s_addr;
     iph->ip_dst = serv_addr.sin_addr;
 
     udp->uh_sport = htons(6666);
     udp->uh_dport = htons(portno);
-    udp->uh_ulen = 8 + strlen(data);
+    udp->uh_ulen = htons(sizeof(struct udphdr) + strlen(data));
     udp->uh_sum = *checksum;
     
 
-    sendto(sockfd, datagram, sizeof(struct ip*) + sizeof(struct udphdr*) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    sendto(sockfd, datagram, sizeof(struct ip) + sizeof(struct udphdr) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     
     memset(buffer, 0, 2048);
     fflush(stdout);
@@ -159,6 +163,86 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
     }
 
 }
+
+void solve_evil_bit(int sockfd, int portno) {
+    char datagram[4096] , *data;
+
+    memset(datagram, 0, sizeof(datagram));
+    struct ip *iph = (struct ip*) datagram;
+    struct udphdr *udp = (struct udphdr*) (datagram + sizeof(struct ip));
+
+    data = datagram + sizeof(struct ip) + sizeof(struct udphdr);
+	strcpy(data , "Hello");
+
+    // get own ip address and port into own_addr
+    struct sockaddr_in own_addr;
+    socklen_t own_addr_len = sizeof(own_addr);
+    if (getsockname(sockfd, (struct sockaddr *) &own_addr, &own_addr_len) != 0) {
+        printf("Couldn't get own IP");
+    }
+
+    iph->ip_hl = 5;
+    iph->ip_v = 4;
+    iph->ip_tos = 0;
+    iph->ip_len = htons(sizeof(struct ip) + sizeof(struct udphdr) + strlen(data));
+    iph->ip_id = 54321;
+
+    // this should be changed to evil bit
+    iph->ip_off = 0;
+    iph->ip_ttl = 255;
+    iph->ip_p = IPPROTO_UDP;
+
+    // we need to calculate the checksum
+    iph->ip_sum = 0;
+    iph->ip_src = own_addr.sin_addr;
+    iph->ip_dst = serv_addr.sin_addr;
+
+    udp->uh_sport = own_addr.sin_port;
+    udp->uh_dport = htons(portno);
+    udp->uh_ulen = htons(8 + strlen(data));
+
+    // we need to calculate the checksum
+    udp->uh_sum = 0;
+    
+    // using the pseudo header
+    struct pseudo_header psh;
+
+	psh.source_address = own_addr.sin_addr.s_addr;
+	psh.dest_address = serv_addr.sin_addr.s_addr;
+	psh.placeholder = 0;
+	psh.protocol = IPPROTO_UDP;
+	psh.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
+
+
+    sendto(sockfd, datagram, sizeof(struct ip) + sizeof(struct udphdr) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    
+    memset(buffer, 0, 2048);
+    fflush(stdout);
+
+    int recVal = 0;
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(sockfd, &rfds);
+
+    struct timeval tv;
+    tv.tv_usec = 0;
+    tv.tv_sec = 10.0;
+
+    recVal = select(sockfd + 1, &rfds, NULL, NULL, &tv);
+    if (recVal == 0) {
+        cout << "Timeout" << endl;
+    }
+    else if (recVal == -1) {
+        cout << "Error" << endl;
+    }
+    else {
+        if(FD_ISSET(sockfd, &rfds)){ 
+            int n = read(sockfd, buffer, sizeof(buffer)-1);
+            cout << buffer << endl;
+        }
+    }
+}
+
 
 int main(int argc, char **argv) {
 	// should be given 2 arguments exactly: IP address, port
@@ -192,9 +276,11 @@ int main(int argc, char **argv) {
     get_udp_response(sock_fd, ports[0], group_msg);
 
     // The last 6 bytes contain the relevant information in byte order
-    // get the last 6 bytes
+    // get the last 6 bytes by finding the end of the message
+    // which is closing parenthesis
     char * pch;
     pch=strrchr(buffer,')');
+
     // we want to start from the next character
     pch = pch + 1;
 
@@ -202,14 +288,8 @@ int main(int argc, char **argv) {
     struct in_addr* given_address = new in_addr;
 
     memcpy(given_checksum, pch, sizeof(unsigned short));
-    pch = pch + 2;
+    pch = pch + sizeof(unsigned short);
     memcpy(given_address, pch, sizeof(in_addr));
-
-
-    // [][][][][][][][]
-    // ^        ^ udph (udphdr*)
-    // dg (char*)
-    // ^ iph (iphdr*)
 
     solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
 }
