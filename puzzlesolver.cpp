@@ -105,13 +105,15 @@ wrapsum(uint32_t sum)
 }
 
 int solve_group_msg(int sockfd, unsigned short checksum, in_addr_t* s_addr) {
-    // make a UDP header and an IP with right checksums
+
+    char *data = "Hello";
 
     char datagram[4096];
     memset(datagram, 0, sizeof(datagram));
-    struct iphdr *iphead = (struct iphdr*) datagram;
-    
-    iphead->ihl = 5;
+    struct iphdr *ip = (struct iphdr*) datagram;
+    struct udphdr *udp = (struct udphdr*) (datagram + sizeof(struct ip));
+
+    ip->ihl = 5;
     iphead->version = 4;
     iphead->protocol = IPROTO_UDP;
     iphead->frag_off = 0;
@@ -120,38 +122,9 @@ int solve_group_msg(int sockfd, unsigned short checksum, in_addr_t* s_addr) {
     iphead->ttl = 255;
     iphead->check = checksum;
 
+    // sendto(sock, packet, (sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data)), ROUTER_IP);
+
 }
-
-// int solve_evil_port(int sockfd, struct hostent* host, int port) {
-//     // make a UDP header and an IP with right checksums
-
-//     char datagram[4096];
-//     memset(datagram, 0, sizeof(datagram));
-//     int datagram_length;
-//     struct ip* ip = (struct ip*) datagram;
-
-//     ip-> ip_v 
-//     ip-> ip_hl
-//     ip-> ip_tos
-//     ip -> ip_len
-//     ip -> ip_id
-//     ip -> ip_off
-//     ip->ip_ttl
-//     ip->ip_p
-//     ip->ip_sum
-
-//     // we'll get our own IP address and port by looking at
-//     // the src address of the socket that we used to
-//     // talk to the server
-
-//     struct sockaddr_in own_addr;
-//     socklen_t own_addr_len = sizeof(own_addr);
-
-//     // use getsockname function
-
-//     ip->ip_src = own_addr.sin_addr;
-//     ip->ip_dst.s_addr = (uint32_t*)host->h_addr;
-// }
 
 int main(int argc, char **argv) {
 	// should be given 2 arguments exactly: IP address, port
@@ -199,7 +172,7 @@ int main(int argc, char **argv) {
 
 
 
-    // [][][][][][][]
+    // [][][][][][][][]
     // ^        ^ udph (udphdr*)
     // dg (char*)
     // ^ iph (iphdr*)
