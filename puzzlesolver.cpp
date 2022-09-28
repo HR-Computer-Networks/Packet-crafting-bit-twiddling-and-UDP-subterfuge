@@ -8,6 +8,7 @@
 #include <string.h>
 #include <cstring>
 #include <netinet/ip.h>
+#include <netinet/udp.h>
 
 using namespace std;
 
@@ -20,12 +21,10 @@ char buffer[2048];
 //that has a valid UDP checksum of 0x4171, and with the source address being 5.105.90.126!
 
 
-void get_udp_response(int portno, char* msg) {
+void get_udp_response(int sock_fd, int portno, char* msg) {
 
     memset(buffer, 0, 2048);
     fflush(stdout);
-    int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
-
 
     // sets target port number to big-endian storage
 	serv_addr.sin_port = htons( portno );
@@ -62,8 +61,6 @@ void get_udp_response(int portno, char* msg) {
             cout << buffer << endl;
         }
     }
-
-    close(sock_fd);
 
 }
 
@@ -104,29 +101,62 @@ wrapsum(uint32_t sum)
 	return htons(sum);
 }
 
-int solve_group_msg(int sockfd, unsigned short checksum, in_addr* s_addr) {
+void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* s_addr) {
     
-    char *data = "Hello";
+    char datagram[4096] , *data;
 
-    char datagram[4096];
     memset(datagram, 0, sizeof(datagram));
     struct ip *ip = (struct ip*) datagram;
-    struct udp *udp = (struct udp*) (datagram + sizeof(struct ip));
+    struct udphdr *udp = (struct udphdr*) (datagram + sizeof(struct ip));
+
+    data = datagram + sizeof(struct ip) + sizeof(struct udphdr);
+	strcpy(data , "Hello");
 
     ip->ip_hl = 5;
     ip->ip_v = 4;
-
     ip->ip_tos = 0;
-    ip->ip_len = ;
-    ip->ip_id = ;
+    ip->ip_len = sizeof(struct ip*) + sizeof(struct udphdr*) + strlen(data);
+    ip->ip_id = 132;
     ip->ip_off = 0;
     ip->ip_ttl = 255;
     ip->ip_p = IPPROTO_UDP;
-    ip->ip_sum = checksum;
+    ip->ip_sum = *checksum;
     ip->ip_src = *s_addr;
     ip->ip_dst = serv_addr.sin_addr;
 
-    sendto(sockfd, datagram, (sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data)), ROUTER_IP);
+    udp->uh_sport = htons(64850);
+    udp->uh_dport = htons(portno);
+    udp->uh_ulen = sizeof(struct udphdr*) + strlen(data);
+    udp->uh_sum = *checksum;
+    
+
+    sendto(sockfd, datagram, sizeof(struct ip*) + sizeof(struct udphdr*) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    
+    memset(buffer, 0, 2048);
+    fflush(stdout);
+
+    int recVal = 0;
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(sockfd, &rfds);
+
+    struct timeval tv;
+    tv.tv_usec = 0;
+    tv.tv_sec = 10.0;
+
+    recVal = select(sockfd + 1, &rfds, NULL, NULL, &tv);
+    if (recVal == 0) {
+        cout << "Timeout" << endl;
+    }
+    else if (recVal == -1) {
+        cout << "Error" << endl;
+    }
+    else {
+        if(FD_ISSET(sockfd, &rfds)){ 
+            int n = read(sockfd, buffer, sizeof(buffer)-1);
+            cout << buffer << endl;
+        }
+    }
 
 }
 
@@ -145,6 +175,7 @@ int main(int argc, char **argv) {
 	memset(&serv_addr, 0, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET ;
 
+    int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
 
     // Need to know the IP address of the server we are connecting t
 	// stores the IP address in binary form in serv_addr.sin_addr
@@ -158,7 +189,7 @@ int main(int argc, char **argv) {
 
     // The first port wants me to send a message with "group_50"
     char group_msg[] = "$group_50$";
-    get_udp_response(ports[0], group_msg);
+    get_udp_response(sock_fd, ports[0], group_msg);
 
     // The last 6 bytes contain the relevant information in byte order
     // get the last 6 bytes
@@ -168,12 +199,11 @@ int main(int argc, char **argv) {
     pch = pch + 1;
 
     unsigned short* given_checksum = new unsigned short;
-    in_addr* given_address = new in_addr;
+    char* given_address;
 
     memcpy(given_checksum, pch, sizeof(unsigned short));
     pch = pch + 2;
-    memcpy(given_address, pch, sizeof(in_addr));
-
+    memcpy(given_address, pch, 4);
 
 
     // [][][][][][][][]
@@ -181,4 +211,5 @@ int main(int argc, char **argv) {
     // dg (char*)
     // ^ iph (iphdr*)
 
+    // solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
 }
