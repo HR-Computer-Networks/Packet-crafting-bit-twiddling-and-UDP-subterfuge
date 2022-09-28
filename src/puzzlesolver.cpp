@@ -16,7 +16,6 @@ using namespace std;
 // has members sin_family, sin_port, sin_addr...
 struct sockaddr_in serv_addr;
 char buffer[2048];
-const char ip[] = "20.213.80.229";
 
 //send a udp message where the payload is a valid UDP IPv4 packet,
 //that has a valid UDP checksum of 0x4171, and with the source address being 5.105.90.126!
@@ -116,8 +115,7 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
     iph->ip_hl = 5;
     iph->ip_v = 4;
     iph->ip_tos = 0;
-    // cout << sizeof(struct ip)
-    iph->ip_len = sizeof(struct ip) + sizeof(struct udphdr) + strlen(data);
+    iph->ip_len = htons(sizeof(struct ip) + sizeof(struct udphdr) + strlen(data));
     iph->ip_id = htonl (54321);
     iph->ip_off = 0;
     iph->ip_ttl = 255;
@@ -126,8 +124,8 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
     iph->ip_src = *s_addr;
     iph->ip_dst = serv_addr.sin_addr;
 
-    udp->uh_sport = 6666;
-    udp->uh_dport = portno);
+    udp->uh_sport = htons(6666);
+    udp->uh_dport = htons(portno);
     udp->uh_ulen = 8 + strlen(data);
     udp->uh_sum = *checksum;
     
