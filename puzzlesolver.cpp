@@ -1,37 +1,39 @@
-// string& passes by reference to a function: the actual memory store
-// string passes by value to a function
-
-// int* n1 creates a pointer variable (will store the address of another var)
-// int n2 creates a regular variable
-// n1 = &n2 passes the memory store / address of n2 to n1
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <string.h>
 #include <arpa/inet.h>
 #include <iostream>
+#include <string.h>
+#include <cstring>
+#include <netinet/ip.h>
 
 using namespace std;
 
 // Setup socket address structure for connection struct
 // has members sin_family, sin_port, sin_addr...
 struct sockaddr_in serv_addr;
+char buffer[2048];
 
-string get_udp_response(int portno, char* msg) {
+//send a udp message where the payload is a valid UDP IPv4 packet,
+//that has a valid UDP checksum of 0x4171, and with the source address being 5.105.90.126!
 
-    char buffer[2000];
+
+void get_udp_response(int portno, char* msg) {
+
+    memset(buffer, 0, 2048);
+    fflush(stdout);
+    int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
+
 
     // sets target port number to big-endian storage
 	serv_addr.sin_port = htons( portno );
 
     // create a socket data structure
-    int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
 
     // send a message via UDP to watch for a response
-	int res = sendto(sock_fd, msg, sizeof(msg)-1, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+	int res = sendto(sock_fd, msg, strlen(msg), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     printf("sending to port %i: %s\n", portno, msg);
     socklen_t length = sizeof(serv_addr);
     // receive from
@@ -57,11 +59,99 @@ string get_udp_response(int portno, char* msg) {
     else {
         if(FD_ISSET(sock_fd, &rfds)){ 
             int n = read(sock_fd, buffer, sizeof(buffer)-1);
-        }//close else if statement
+            cout << buffer << endl;
+        }
     }
 
-    return buffer;
+    close(sock_fd);
+
 }
+
+
+
+// retrieved from
+// https://github.com/openbsd/src/blob/master/sbin/dhclient/packet.c
+uint32_t
+checksum(unsigned char *buf, uint32_t nbytes, uint32_t sum)
+{
+	unsigned int	 i;
+
+	/* Checksum all the pairs of bytes first. */
+	for (i = 0; i < (nbytes & ~1U); i += 2) {
+		sum += (uint16_t)ntohs(*((uint16_t *)(buf + i)));
+		if (sum > 0xFFFF)
+			sum -= 0xFFFF;
+	}
+
+	/*
+	 * If there's a single byte left over, checksum it, too.
+	 * Network byte order is big-endian, so the remaining byte is
+	 * the high byte.
+	 */
+	if (i < nbytes) {
+		sum += buf[i] << 8;
+		if (sum > 0xFFFF)
+			sum -= 0xFFFF;
+	}
+
+	return sum;
+}
+
+uint32_t
+wrapsum(uint32_t sum)
+{
+	sum = ~sum & 0xFFFF;
+	return htons(sum);
+}
+
+int solve_group_msg(int sockfd, unsigned short checksum, in_addr_t* s_addr) {
+    // make a UDP header and an IP with right checksums
+
+    char datagram[4096];
+    memset(datagram, 0, sizeof(datagram));
+    struct iphdr *iphead = (struct iphdr*) datagram;
+    
+    iphead->ihl = 5;
+    iphead->version = 4;
+    iphead->protocol = IPROTO_UDP;
+    iphead->frag_off = 0;
+    iphead->saddr = s_addr;
+    iphead->daddr = serv_addr.sin_addr;
+    iphead->ttl = 255;
+    iphead->check = checksum;
+
+}
+
+// int solve_evil_port(int sockfd, struct hostent* host, int port) {
+//     // make a UDP header and an IP with right checksums
+
+//     char datagram[4096];
+//     memset(datagram, 0, sizeof(datagram));
+//     int datagram_length;
+//     struct ip* ip = (struct ip*) datagram;
+
+//     ip-> ip_v 
+//     ip-> ip_hl
+//     ip-> ip_tos
+//     ip -> ip_len
+//     ip -> ip_id
+//     ip -> ip_off
+//     ip->ip_ttl
+//     ip->ip_p
+//     ip->ip_sum
+
+//     // we'll get our own IP address and port by looking at
+//     // the src address of the socket that we used to
+//     // talk to the server
+
+//     struct sockaddr_in own_addr;
+//     socklen_t own_addr_len = sizeof(own_addr);
+
+//     // use getsockname function
+
+//     ip->ip_src = own_addr.sin_addr;
+//     ip->ip_dst.s_addr = (uint32_t*)host->h_addr;
+// }
 
 int main(int argc, char **argv) {
 	// should be given 2 arguments exactly: IP address, port
@@ -88,13 +178,30 @@ int main(int argc, char **argv) {
 
     printf("Relevant ports: %i, %i, %i, %i \n", ports[0], ports[1], ports[2], ports[3]);
     char probe_msg[] = "test";
-    // get_udp_response(ports[0], probe_msg);
 
+    // The first port wants me to send a message with "group_50"
     char group_msg[] = "$group_50$";
-    cout << get_udp_response(ports[0], group_msg);
+    get_udp_response(ports[0], group_msg);
 
-    cout << get_udp_response(ports[1], probe_msg) << endl;
-    cout << get_udp_response(ports[2], probe_msg) << endl;
-    cout << get_udp_response(ports[3], probe_msg) << endl;
+    // The last 6 bytes contain the relevant information in byte order
+    // get the last 6 bytes
+    char * pch;
+    pch=strrchr(buffer,')');
+    // we want to start from the next character
+    pch = pch + 1;
+
+    unsigned short* given_checksum = new unsigned short;
+    in_addr_t* given_address = new in_addr_t;
+
+    memcpy(given_checksum, pch, sizeof(unsigned short));
+    pch = pch + 2;
+    memcpy(given_address, pch, sizeof(in_addr_t));
+
+
+
+    // [][][][][][][]
+    // ^        ^ udph (udphdr*)
+    // dg (char*)
+    // ^ iph (iphdr*)
 
 }

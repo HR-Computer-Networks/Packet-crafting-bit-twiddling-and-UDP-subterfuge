@@ -19,10 +19,10 @@ using namespace std;
 // Setup socket address structure for connection struct
 // has members sin_family, sin_port, sin_addr...
 struct sockaddr_in serv_addr;
+char buffer[1024];
 
 bool port_is_open(int portno) {
 
-    char buffer[100];
 
     // sets target port number to big-endian storage
 	serv_addr.sin_port = htons( portno );
@@ -31,7 +31,9 @@ bool port_is_open(int portno) {
     int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
 
     // send a message via UDP to watch for a response
-	int res = sendto(sock_fd, "test", sizeof("test")-1, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    for (int i=0; i<3; i++) {
+	    int res = sendto(sock_fd, "test", sizeof("test")-1, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    }
 
     socklen_t length = sizeof(serv_addr);
     // receive from
@@ -45,7 +47,7 @@ bool port_is_open(int portno) {
 
     struct timeval tv;
     tv.tv_usec = 0;
-    tv.tv_sec = 3.0;
+    tv.tv_sec = 1.0;
 
     recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
     if (recVal == 0) {
@@ -60,9 +62,12 @@ bool port_is_open(int portno) {
         if(FD_ISSET(sock_fd, &rfds)){ 
             int n = read(sock_fd, buffer, 256);
             cout << buffer << endl;
-        }//close else if statement
+        }
+        memset(buffer, 0, 1024);
+        fflush(stdout);
         return true;
     }
+
 }
 
 int main(int argc, char **argv) {
