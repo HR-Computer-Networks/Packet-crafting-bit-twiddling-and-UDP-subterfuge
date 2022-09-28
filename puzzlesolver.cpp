@@ -104,25 +104,29 @@ wrapsum(uint32_t sum)
 	return htons(sum);
 }
 
-int solve_group_msg(int sockfd, unsigned short checksum, in_addr_t* s_addr) {
-
+int solve_group_msg(int sockfd, unsigned short checksum, in_addr* s_addr) {
+    
     char *data = "Hello";
 
     char datagram[4096];
     memset(datagram, 0, sizeof(datagram));
-    struct iphdr *ip = (struct iphdr*) datagram;
-    struct udphdr *udp = (struct udphdr*) (datagram + sizeof(struct ip));
+    struct ip *ip = (struct ip*) datagram;
+    struct udp *udp = (struct udp*) (datagram + sizeof(struct ip));
 
-    ip->ihl = 5;
-    iphead->version = 4;
-    iphead->protocol = IPROTO_UDP;
-    iphead->frag_off = 0;
-    iphead->saddr = s_addr;
-    iphead->daddr = serv_addr.sin_addr;
-    iphead->ttl = 255;
-    iphead->check = checksum;
+    ip->ip_hl = 5;
+    ip->ip_v = 4;
 
-    // sendto(sock, packet, (sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data)), ROUTER_IP);
+    ip->ip_tos = 0;
+    ip->ip_len = ;
+    ip->ip_id = ;
+    ip->ip_off = 0;
+    ip->ip_ttl = 255;
+    ip->ip_p = IPPROTO_UDP;
+    ip->ip_sum = checksum;
+    ip->ip_src = *s_addr;
+    ip->ip_dst = serv_addr.sin_addr;
+
+    sendto(sockfd, datagram, (sizeof(struct iphdr) + sizeof(struct udphdr) + strlen(data)), ROUTER_IP);
 
 }
 
@@ -164,11 +168,11 @@ int main(int argc, char **argv) {
     pch = pch + 1;
 
     unsigned short* given_checksum = new unsigned short;
-    in_addr_t* given_address = new in_addr_t;
+    in_addr* given_address = new in_addr;
 
     memcpy(given_checksum, pch, sizeof(unsigned short));
     pch = pch + 2;
-    memcpy(given_address, pch, sizeof(in_addr_t));
+    memcpy(given_address, pch, sizeof(in_addr));
 
 
 
