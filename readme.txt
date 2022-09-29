@@ -36,3 +36,14 @@ types are in a premade order, which is:
 3)
 4)
 ----------------------------------------------------------------
+PART 3: Knocking
+
+make puzzlesolver && ./puzzlesolver 130.208.242.120 oracleport hidden1 hidden2 Ennyn Durin Aran Moria. Pedo Mellon a Minno. Im Narvi hain echant. Celebrimbor o Eregion teithant i thiw hin.
+
+By running this, the code sends UDP request to the oracle port, 
+with a message containing "hidden1, hidden2". In return we receive 
+the order in which to knock the ports. 
+
+We send UDP packets containing the secret phrase in the order 
+given before, and at the end we receive a message 
+"you may enter"
