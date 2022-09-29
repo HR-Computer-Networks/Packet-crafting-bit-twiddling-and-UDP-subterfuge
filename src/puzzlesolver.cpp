@@ -302,10 +302,11 @@ void solve_evil_bit(int sockfd, int portno) {
 
     // we need to calculate the checksum
     iph->ip_sum = 0;
-    iph->ip_sum = checksum2 (datagram, sizeof (struct ip));
 
     iph->ip_src = own_addr.sin_addr;
     iph->ip_dst = serv_addr.sin_addr;
+
+    iph->ip_sum = checksum2 (datagram, sizeof (struct ip));
 
     udp->uh_sport = own_addr.sin_port;
     udp->uh_dport = htons(portno);
@@ -325,7 +326,7 @@ void solve_evil_bit(int sockfd, int portno) {
 
 
     int psize = sizeof(struct pseudo_header) + sizeof(struct udphdr) + strlen(data);
-	memset(pseudogram, 0, psize);
+	pseudogram = (char *) malloc(psize);
 	
 	memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
 	memcpy(pseudogram + sizeof(struct pseudo_header), udp, sizeof(struct udphdr) + strlen(data));
