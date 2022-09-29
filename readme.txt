@@ -7,8 +7,9 @@ make port_scanner && ./port_scanner 130.208.242.120 4000 4100
 The first part of the command is used to compile the code, while 
 the second part runs it with the IP address and the range of the 
 ports we want to scan.
+
 ----------------------------------------------------------------
-WARNING: This next part seems to work only on MacOS
+WARNING: This next part only works on MacOS
 PART 2: Puzzle port
     
 To run part two, use the following command:
@@ -22,9 +23,9 @@ that have been scanned by the port_scanner.
 Since the script is using UDP protocol, running it once and
 having all the ports give a response in one try usually will
 not work. This can be solved by implementing a loop that keeps 
-contacting a port when it gets a timeout, and than switches 
+contacting a port when it gets a timeout, and then switches 
 to the next port after the answers are received.
-We did not implement such system, is it therefore necessary to
+We did not implement such a system, is it therefore necessary to
 run it multiple time if a timeout appears.
 
 Also, we did not implement anything to recognize the type of 
@@ -34,10 +35,14 @@ types are in a premade order, which is:
 2) Evil bit port
 3) Checksum port 
 4) Oracle port
+
+Thus, run as:
+make puzzlesolver && ./puzzlesolver 130.208.242.120 boss_port evil_port checksum_port oracle_port 
+
 ----------------------------------------------------------------
 PART 3: Knocking
 
-make puzzlesolver && ./puzzlesolver 130.208.242.120 oracleport hidden1 hidden2 Ennyn Durin Aran Moria. Pedo Mellon a Minno. Im Narvi hain echant. Celebrimbor o Eregion teithant i thiw hin.
+make puzzlesolver && ./puzzlesolver 130.208.242.120 oracleport hidden1 hidden2 secret_message
 
 By running this, the code sends UDP request to the oracle port, 
 with a message containing "hidden1, hidden2". In return we receive 
