@@ -77,8 +77,6 @@ void get_udp_response(int sock_fd, int portno, char* msg) {
 
 }
 
-
-// retrieved from https://github.com/openbsd/src/blob/master/sbin/dhclient/packet.c
 unsigned short checksum2(const char *buf, unsigned size)
 {
 	unsigned long long sum = 0;
@@ -134,9 +132,27 @@ unsigned short checksum2(const char *buf, unsigned size)
 	return ~t3;
 }
 
+// generates random string of length len
+// used for finding UDP checksum
+string gen_random(const int len) {
+    static const char alphanum[] =
+        "0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz";
+    std::string tmp_s;
+    tmp_s.reserve(len);
+
+    for (int i = 0; i < len; ++i) {
+        tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
+    }
+    
+    return tmp_s;
+}
+
+
 void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* s_addr) {
     
-    char datagram[4096] , *data;
+    char datagram[4096] , *data, *pseudogram;
 
     memset(datagram, 0, sizeof(datagram));
     struct ip *iph = (struct ip*) datagram;
@@ -156,15 +172,57 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
 
     // calculate the IP header checksum
     iph->ip_sum = 0;
-    iph->ip_sum = htons(checksum2(datagram, sizeof(struct ip)));
-
+    iph->ip_sum = checksum2(datagram, sizeof (struct ip));
     iph->ip_src = *s_addr;
     iph->ip_dst = serv_addr.sin_addr;
 
     udp->uh_sport = htons(6666);
     udp->uh_dport = htons(portno);
     udp->uh_ulen = htons(sizeof(struct udphdr) + strlen(data));
-    udp->uh_sum = *checksum;
+
+    // we need to create data such that the checksums will match
+    udp->uh_sum = 0;
+
+    // using the pseudo header
+    struct pseudo_header psh;
+
+
+    data = datagram + sizeof(struct ip) + sizeof(struct udphdr);
+	strcpy(data , "Hello");
+
+	psh.source_address = s_addr->s_addr;
+	psh.dest_address = serv_addr.sin_addr.s_addr;
+	psh.placeholder = 0;
+	psh.protocol = IPPROTO_UDP;
+	psh.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
+
+
+    int psize = sizeof(struct pseudo_header) + sizeof(struct udphdr) + strlen(data);
+	memset(pseudogram, 0, psize);
+	
+	memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
+	memcpy(pseudogram + sizeof(struct pseudo_header), udp, sizeof(struct udphdr) + strlen(data));
+
+    unsigned short udp_sum = checksum2(pseudogram, psize);
+
+    while (udp_sum != *checksum) {
+        data = datagram + sizeof(struct ip) + sizeof(struct udphdr);
+	    strcpy(data , gen_random(8).c_str());
+
+        psh.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
+
+
+        int psize = sizeof(struct pseudo_header) + sizeof(struct udphdr) + strlen(data);
+        memset(pseudogram, 0, psize);
+        
+        memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
+        memcpy(pseudogram + sizeof(struct pseudo_header), udp, sizeof(struct udphdr) + strlen(data));
+
+        udp_sum = checksum2(pseudogram, psize);
+    }
+
+    cout << "hii" << endl;
+
     
 
     sendto(sockfd, datagram, sizeof(struct ip) + sizeof(struct udphdr) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
@@ -220,7 +278,7 @@ void solve_evil_bit(int sockfd, int portno) {
     struct udphdr *udp = (struct udphdr*) (datagram + sizeof(struct ip));
 
     data = datagram + sizeof(struct ip) + sizeof(struct udphdr);
-	strcpy(data , "Hello");
+	strcpy(data , "$group_50$");
 
     // get own ip address and port into own_addr
     struct sockaddr_in own_addr;
@@ -233,17 +291,18 @@ void solve_evil_bit(int sockfd, int portno) {
     iph->ip_hl = 5;
     iph->ip_v = 4;
     iph->ip_tos = 0;
-    iph->ip_len = htons(sizeof(struct ip) + sizeof(struct udphdr) + strlen(data));
+    iph->ip_len = sizeof(struct ip) + sizeof(struct udphdr) + strlen(data);
     iph->ip_id = 54321;
 
     // this should be changed to evil bit
-    iph->ip_off = 0;
+    // the first bit should be set to 1 for this
+    iph->ip_off = 1000000000000000;
     iph->ip_ttl = 255;
     iph->ip_p = IPPROTO_UDP;
 
     // we need to calculate the checksum
     iph->ip_sum = 0;
-    iph->ip_sum = checksum2 (datagram, sizeof (struct ip) + sizeof (struct udphdr) + strlen(data));
+    iph->ip_sum = checksum2 (datagram, sizeof (struct ip));
 
     iph->ip_src = own_addr.sin_addr;
     iph->ip_dst = serv_addr.sin_addr;
@@ -284,11 +343,12 @@ void solve_evil_bit(int sockfd, int portno) {
 
     // set the port we want to send tp
     serv_addr.sin_port = htons(portno);
-    if ( sendto(s, datagram, 15, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0 ) {
-		perror("sendto failed");
+
+    if ( sendto(s, datagram, sizeof(struct ip) + sizeof(struct udphdr) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0 ) {
+		perror("Evil sendto failed");
 	}
     else {
-        printf("Evil packet sent");
+        printf("Evil packet sent\n");
     }
 
     memset(buffer, 0, 2048);
@@ -303,7 +363,7 @@ void solve_evil_bit(int sockfd, int portno) {
     tv.tv_usec = 0;
     tv.tv_sec = 10.0;
 
-    recVal = select(sockfd + 1, &rfds, NULL, NULL, &tv);
+    recVal = select(s+1, &rfds, NULL, NULL, &tv);
     if (recVal == 0) {
         cout << "Timeout" << endl;
     }
@@ -343,30 +403,36 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 
+    // ports[0] should be the checksum problem
+    // ports[1] the evil bit problem
+    // ports[2]...
     printf("Relevant ports: %i, %i, %i, %i \n", ports[0], ports[1], ports[2], ports[3]);
     char probe_msg[] = "test";
 
     // The first port wants me to send a message with "group_50"
     char group_msg[] = "$group_50$";
-    get_udp_response(sock_fd, ports[0], group_msg);
+    // get_udp_response(sock_fd, ports[0], group_msg);
 
-    // The last 6 bytes contain the relevant information in byte order
-    // get the last 6 bytes by finding the end of the message
-    // which is closing parenthesis
-    char * pch;
-    pch=strrchr(buffer,')');
+    // // The last 6 bytes contain the relevant information in byte order
+    // // get the last 6 bytes by finding the end of the message
+    // // which is closing parenthesis
+    // char * pch;
+    // pch=strrchr(buffer,')');
 
-    // we want to start from the next character
-    pch = pch + 1;
+    // // we want to start from the next character
+    // pch = pch + 1;
 
-    unsigned short* given_checksum = new unsigned short;
-    struct in_addr* given_address = new in_addr;
+    // unsigned short* given_checksum = new unsigned short;
+    // struct in_addr* given_address = new in_addr;
 
-    memcpy(given_checksum, pch, sizeof(unsigned short));
-    pch = pch + sizeof(unsigned short);
-    memcpy(given_address, pch, sizeof(in_addr));
+    // memcpy(given_checksum, pch, sizeof(unsigned short));
+    // pch = pch + sizeof(unsigned short);
+    // memcpy(given_address, pch, sizeof(in_addr));
+
+    // solve_group_msg(sock_fd, ports[0], given_checksum, &serv_addr.sin_addr);
 
 
-    // solve_evil_bit(sock_fd, ports[1]);
-    solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
+    printf("Solving evil bit port... \n");
+    get_udp_response(sock_fd, ports[1], probe_msg);
+    solve_evil_bit(sock_fd, ports[1]);
 }
