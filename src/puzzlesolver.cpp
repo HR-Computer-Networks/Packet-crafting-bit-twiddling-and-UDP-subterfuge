@@ -32,6 +32,7 @@ struct pseudo_header
 
 void get_udp_response(int sock_fd, int portno, char* msg) {
 
+    // clear buffer
     memset(buffer, 0, 2048);
     fflush(stdout);
 
@@ -53,6 +54,7 @@ void get_udp_response(int sock_fd, int portno, char* msg) {
     FD_ZERO(&rfds);
     FD_SET(sock_fd, &rfds);
 
+    // set max time
     struct timeval tv;
     tv.tv_usec = 0;
     tv.tv_sec = 5.0;
@@ -65,6 +67,7 @@ void get_udp_response(int sock_fd, int portno, char* msg) {
         cout << "Error" << endl;
         exit(0);
     }
+    // print out buffer
     else {
         if(FD_ISSET(sock_fd, &rfds)){ 
             int n = read(sock_fd, buffer, sizeof(buffer)-1);
@@ -74,6 +77,7 @@ void get_udp_response(int sock_fd, int portno, char* msg) {
 
 }
 
+// retrieved from https://locklessinc.com/articles/tcp_checksum/
 unsigned short checksum2(const char *buf, unsigned size)
 {
 	unsigned long long sum = 0;
@@ -129,60 +133,23 @@ unsigned short checksum2(const char *buf, unsigned size)
 	return ~t3;
 }
 
-uint16_t udp_checksum(const void *buffer, size_t length, in_addr_t src_addr, in_addr_t dest_addr)
-{
-    const uint16_t *buf = (const uint16_t *) buffer; /* treat input as bunch of uint16_t's */
-    uint16_t *src_ip = (uint16_t *) &src_addr; 
-    uint16_t *dest_ip = (uint16_t *)&dest_addr;
-    uint32_t sum;
-    size_t len = length;
-
-    sum = 0; 
-
-    /* fold the carry bits for the buffer */
-    while (length > 1) {
-        sum += *buf++;
-        if (sum & 0x80000000)
-            sum = (sum & 0xFFFF) + (sum >> 16); /* fold  carries */
-        length -= 2;
-    }
-
-    if(length & 1)
-        sum += *((uint8_t *)buf); // add the padding if packet length is odd */
-
-    /* inject checksum of the pseudo-header */
-    sum += *(src_ip++);
-    sum += *(src_ip);
-
-    sum += *(dest_ip++);
-    sum += *(dest_ip);
-
-    sum += htons(IPPROTO_UDP); /* protocol info */
-    sum += htons(len); /* original length! */
-
-    /* fold any carry bits created by adding header sums */
-    while(sum >> 16)
-        sum = (sum & 0xFFFF) + (sum >> 16);
-
-    return (uint16_t)(~sum);
-}
 
 // generates random string of length len
-// used for finding UDP checksum
-string gen_random(const int len) {
-    static const char alphanum[] =
-        "0123456789"
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz";
-    std::string tmp_s;
-    tmp_s.reserve(len);
+// used for finding UDP checksum (not fully working)
+// string gen_random(const int len) {
+//     static const char alphanum[] =
+//         "0123456789"
+//         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+//         "abcdefghijklmnopqrstuvwxyz";
+//     std::string tmp_s;
+//     tmp_s.reserve(len);
 
-    for (int i = 0; i < len; ++i) {
-        tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
-    }
+//     for (int i = 0; i < len; ++i) {
+//         tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
+//     }
     
-    return tmp_s;
-}
+//     return tmp_s;
+// }
 
 
 void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* s_addr) {
@@ -190,12 +157,18 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
     char datagram[4096] , *data, *pseudogram;
 
     memset(datagram, 0, sizeof(datagram));
+
+    // create ip pointer at start
     struct ip *iph = (struct ip*) datagram;
+
+    // udp header after ip header
     struct udphdr *udp = (struct udphdr*) (datagram + sizeof(struct ip));
 
+    // data after both headers
     data = datagram + sizeof(struct ip) + sizeof(struct udphdr);
-	strcpy(data , "Hello");
+	strcpy(data , "$group_50$");
 
+    // set ip header fields
     iph->ip_hl = 5;
     iph->ip_v = 4;
     iph->ip_tos = 0;
@@ -258,8 +231,10 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
     //     udp_sum = checksum2(pseudogram, psize);
     // }
 
+    // send socket with nested socket as payload
     sendto(sockfd, datagram, sizeof(struct ip) + sizeof(struct udphdr) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     
+    // clear buffer
     memset(buffer, 0, 2048);
     fflush(stdout);
 
@@ -268,6 +243,7 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
     FD_ZERO(&rfds);
     FD_SET(sockfd, &rfds);
 
+    // wait for response
     struct timeval tv;
     tv.tv_usec = 0;
     tv.tv_sec = 10.0;
@@ -339,6 +315,7 @@ void solve_evil_bit(int sockfd, int portno) {
     iph->ip_src = own_addr.sin_addr;
     iph->ip_dst = serv_addr.sin_addr;
 
+    // calculate ip checksum
     iph->ip_sum = checksum2 (datagram, sizeof (struct ip));
 
     udp->uh_sport = own_addr.sin_port;
@@ -366,7 +343,7 @@ void solve_evil_bit(int sockfd, int portno) {
 
 
     // calculate checksum using pseudo header
-    udp->uh_sum = htons(udp_checksum(udp, sizeof(struct udphdr), own_addr.sin_addr.s_addr, serv_addr.sin_addr.s_addr));
+    udp->uh_sum = checksum2(pseudogram, sizeof(struct udphdr));
 	
     // for MacOS from Piazza
     int optVal = 1;
@@ -375,9 +352,10 @@ void solve_evil_bit(int sockfd, int portno) {
         perror("Can't set IP_HDRINCL option on a socket");
     }
 
-    // set the port we want to send tp
+    // set the port we want to send to
     serv_addr.sin_port = htons(portno);
 
+    // send packet with evil bit
     if ( sendto(s, datagram, sizeof(struct ip) + sizeof(struct udphdr) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0 ) {
 		perror("Evil sendto failed");
 	}
@@ -385,6 +363,7 @@ void solve_evil_bit(int sockfd, int portno) {
         printf("Evil packet sent\n");
     }
 
+    // clear buffer and get response...
     memset(buffer, 0, 2048);
     fflush(stdout);
 
@@ -421,14 +400,17 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
+    // get the given server ip address
     char *server_ip = argv[1];
     // set block of memory
+
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET ;
 
+    // create regular UDP socket
     int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
 
-    // Need to know the IP address of the server we are connecting t
+    // Need to know the IP address of the server we are connecting to
     // stores the IP address in binary form in serv_addr.sin_addr
     if( inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0) {
         perror(" failed to set socket address");
@@ -439,7 +421,7 @@ int main(int argc, char **argv) {
     char *endptr;
     const long int argument = strtol (argv[5], &endptr, 10);
 
-    // Secret phrase was passed
+    // Secret phrase was passed so question 3
     if (endptr[0] != '\0') {
         int oracleport = atoi(argv[2]);
         int hidden1 = atoi(argv[3]);
@@ -460,7 +442,7 @@ int main(int argc, char **argv) {
         get_udp_response(sock_fd, 4014, secret_phrase);
     }
 
-    // 4 puzzle ports passed
+    // 4 puzzle ports passed, so question 2
     else {
         int ports[] = { atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]) };
 
@@ -476,6 +458,7 @@ int main(int argc, char **argv) {
         char hiddenport1[4];
         memset(hiddenport1, '\0', 4);
 
+        // print out first hidden port!
         char* p_port1;
         p_port1 = strrchr(buffer, 's');
         p_port1 = p_port1 + 2;
@@ -508,14 +491,19 @@ int main(int argc, char **argv) {
         unsigned short* given_checksum = new unsigned short;
         struct in_addr* given_address = new in_addr;
 
+        // first 2 bytes are checksum
         memcpy(given_checksum, pch, sizeof(unsigned short));
         pch = pch + sizeof(unsigned short);
+
+        // next 4 bytes are address
         memcpy(given_address, pch, sizeof(in_addr));
 
-        printf("\n Probing the oracle \n");
+
         solve_group_msg(sock_fd, ports[2], given_checksum, &serv_addr.sin_addr);
 
-
+        // finally, we simply probe the oracle
+        printf("\n Probing the oracle \n");
+        
         // This probes the oracle
         get_udp_response(sock_fd, ports[3], probe_msg);
     }
