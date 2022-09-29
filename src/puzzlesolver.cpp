@@ -1,3 +1,10 @@
+// current ports:
+
+// checksum: 4092
+// evil bit: 4044
+// secret port: 4071 (= 4028)
+// oracle: 4021
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -59,6 +66,7 @@ void get_udp_response(int sock_fd, int portno, char* msg) {
     }
     else if (recVal == -1) {
         cout << "Error" << endl;
+        exit(0);
     }
     else {
         if(FD_ISSET(sock_fd, &rfds)){ 
@@ -71,34 +79,59 @@ void get_udp_response(int sock_fd, int portno, char* msg) {
 
 
 // retrieved from https://github.com/openbsd/src/blob/master/sbin/dhclient/packet.c
-uint32_t check(unsigned char *buf, uint32_t nbytes, uint32_t sum) {
-	unsigned int i;
-
-	/* Checksum all the pairs of bytes first. */
-	for (i = 0; i < (nbytes & ~1U); i += 2) {
-		sum += (uint16_t)ntohs(*((uint16_t *)(buf + i)));
-		if (sum > 0xFFFF)
-			sum -= 0xFFFF;
-	}
-
-	/*
-	 * If there's a single byte left over, checksum it, too.
-	 * Network byte order is big-endian, so the remaining byte is
-	 * the high byte.
-	 */
-	if (i < nbytes) {
-		sum += buf[i] << 8;
-		if (sum > 0xFFFF)
-			sum -= 0xFFFF;
-	}
-
-	return sum;
-}
-
-uint32_t wrapsum(uint32_t sum)
+unsigned short checksum2(const char *buf, unsigned size)
 {
-	sum = ~sum & 0xFFFF;
-	return htons(sum);
+	unsigned long long sum = 0;
+	const unsigned long long *b = (unsigned long long *) buf;
+
+	unsigned t1, t2;
+	unsigned short t3, t4;
+
+	/* Main loop - 8 bytes at a time */
+	while (size >= sizeof(unsigned long long))
+	{
+		unsigned long long s = *b++;
+		sum += s;
+		if (sum < s) sum++;
+		size -= 8;
+	}
+
+	/* Handle tail less than 8-bytes long */
+	buf = (const char *) b;
+	if (size & 4)
+	{
+		unsigned s = *(unsigned *)buf;
+		sum += s;
+		if (sum < s) sum++;
+		buf += 4;
+	}
+
+	if (size & 2)
+	{
+		unsigned short s = *(unsigned short *) buf;
+		sum += s;
+		if (sum < s) sum++;
+		buf += 2;
+	}
+
+	if (size)
+	{
+		unsigned char s = *(unsigned char *) buf;
+		sum += s;
+		if (sum < s) sum++;
+	}
+
+	/* Fold down to 16 bits */
+	t1 = sum;
+	t2 = sum >> 32;
+	t1 += t2;
+	if (t1 < t2) t1++;
+	t3 = t1;
+	t4 = t1 >> 16;
+	t3 += t4;
+	if (t3 < t4) t3++;
+
+	return ~t3;
 }
 
 void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* s_addr) {
@@ -123,8 +156,8 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
 
     // calculate the IP header checksum
     iph->ip_sum = 0;
-    uint32_t sum = wrapsum(check((unsigned char *)iph, iph->ip_len, 0));
-    iph->ip_sum = 0;
+    iph->ip_sum = htons(checksum2(datagram, sizeof(struct ip)));
+
     iph->ip_src = *s_addr;
     iph->ip_dst = serv_addr.sin_addr;
 
@@ -165,10 +198,27 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
 }
 
 void solve_evil_bit(int sockfd, int portno) {
-    char datagram[4096] , *data;
+
+    //Create a raw socket
+	int s = socket (PF_INET, SOCK_RAW, IPPROTO_RAW);
+	
+	if(s == -1)
+	{
+		//socket creation failed, may be because of non-root privileges
+		perror("Failed to create socket");
+		exit(1);
+	}
+
+    // data will be the payload
+    // pseudogram for UDP checksum calculation
+    char datagram[4096] , *data, *pseudogram;
 
     memset(datagram, 0, sizeof(datagram));
+
+    // ip header pointer
     struct ip *iph = (struct ip*) datagram;
+
+    //udp header comes after ip header
     struct udphdr *udp = (struct udphdr*) (datagram + sizeof(struct ip));
 
     data = datagram + sizeof(struct ip) + sizeof(struct udphdr);
@@ -194,6 +244,8 @@ void solve_evil_bit(int sockfd, int portno) {
 
     // we need to calculate the checksum
     iph->ip_sum = 0;
+
+
     iph->ip_src = own_addr.sin_addr;
     iph->ip_dst = serv_addr.sin_addr;
 
@@ -202,6 +254,7 @@ void solve_evil_bit(int sockfd, int portno) {
     udp->uh_ulen = htons(8 + strlen(data));
 
     // we need to calculate the checksum
+    // using the pseudogram after this
     udp->uh_sum = 0;
     
     // using the pseudo header
@@ -214,8 +267,33 @@ void solve_evil_bit(int sockfd, int portno) {
 	psh.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
 
 
-    sendto(sockfd, datagram, sizeof(struct ip) + sizeof(struct udphdr) + strlen(data), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
-    
+    int psize = sizeof(struct pseudo_header) + sizeof(struct udphdr) + strlen(data);
+	memset(pseudogram, 0, psize);
+	
+	memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
+	memcpy(pseudogram + sizeof(struct pseudo_header), udp, sizeof(struct udphdr) + strlen(data));
+
+
+    // calculate checksum using pseudo header
+    udp->uh_sum = checksum2(pseudogram , psize);
+	
+	//IP_HDRINCL to tell the kernel that headers are included in the packet
+	int one = 1;
+	const int *val = &one;
+	
+    // for MacOS from Piazza
+    int optVal = 1;
+    int status = setsockopt(s, IPPROTO_IP, IP_HDRINCL, &optVal, sizeof(optVal));
+    if (status != 0) {
+        perror("Can't set IP_HDRINCL option on a socket");
+    }
+
+    // set the port we want to send tp
+    serv_addr.sin_port = htons(portno);
+    if ( sendto(s, datagram, 15, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) ) {
+		perror("sendto failed");
+	}    
+
     memset(buffer, 0, 2048);
     fflush(stdout);
 
@@ -291,5 +369,7 @@ int main(int argc, char **argv) {
     pch = pch + sizeof(unsigned short);
     memcpy(given_address, pch, sizeof(in_addr));
 
-    solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
+    solve_evil_bit(sock_fd, ports[1]);
+
+    // solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
 }
