@@ -200,12 +200,10 @@ void solve_group_msg(int sockfd, int portno, unsigned short* checksum, in_addr* 
 void solve_evil_bit(int sockfd, int portno) {
 
     //Create a raw socket
-	int s = socket (PF_INET, SOCK_RAW, IPPROTO_RAW);
+	int s = socket (AF_INET, SOCK_RAW, IPPROTO_RAW);
 	
-	if(s == -1)
-	{
-		//socket creation failed, may be because of non-root privileges
-		perror("Failed to create socket");
+	if(s == -1) {
+	    perror("Failed to create socket");
 		exit(1);
 	}
 
@@ -228,7 +226,8 @@ void solve_evil_bit(int sockfd, int portno) {
     struct sockaddr_in own_addr;
     socklen_t own_addr_len = sizeof(own_addr);
     if (getsockname(sockfd, (struct sockaddr *) &own_addr, &own_addr_len) != 0) {
-        printf("Couldn't get own IP");
+        printf("Couldn't get own IP and port");
+        exit(0);
     }
 
     iph->ip_hl = 5;
@@ -244,17 +243,16 @@ void solve_evil_bit(int sockfd, int portno) {
 
     // we need to calculate the checksum
     iph->ip_sum = 0;
-
+    iph->ip_sum = checksum2 (datagram, sizeof (struct ip) + sizeof (struct udphdr) + strlen(data));
 
     iph->ip_src = own_addr.sin_addr;
     iph->ip_dst = serv_addr.sin_addr;
 
     udp->uh_sport = own_addr.sin_port;
     udp->uh_dport = htons(portno);
-    udp->uh_ulen = htons(8 + strlen(data));
+    udp->uh_ulen = htons(sizeof(struct udphdr) + strlen(data));
 
-    // we need to calculate the checksum
-    // using the pseudogram after this
+    // we need to calculate the checksum using the pseudogram after this
     udp->uh_sum = 0;
     
     // using the pseudo header
@@ -277,10 +275,6 @@ void solve_evil_bit(int sockfd, int portno) {
     // calculate checksum using pseudo header
     udp->uh_sum = checksum2(pseudogram , psize);
 	
-	//IP_HDRINCL to tell the kernel that headers are included in the packet
-	int one = 1;
-	const int *val = &one;
-	
     // for MacOS from Piazza
     int optVal = 1;
     int status = setsockopt(s, IPPROTO_IP, IP_HDRINCL, &optVal, sizeof(optVal));
@@ -290,9 +284,12 @@ void solve_evil_bit(int sockfd, int portno) {
 
     // set the port we want to send tp
     serv_addr.sin_port = htons(portno);
-    if ( sendto(s, datagram, 15, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) ) {
+    if ( sendto(s, datagram, 15, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0 ) {
 		perror("sendto failed");
-	}    
+	}
+    else {
+        printf("Evil packet sent");
+    }
 
     memset(buffer, 0, 2048);
     fflush(stdout);
@@ -369,7 +366,7 @@ int main(int argc, char **argv) {
     pch = pch + sizeof(unsigned short);
     memcpy(given_address, pch, sizeof(in_addr));
 
-    solve_evil_bit(sock_fd, ports[1]);
 
-    // solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
+    // solve_evil_bit(sock_fd, ports[1]);
+    solve_group_msg(sock_fd, ports[0], given_checksum, given_address);
 }
