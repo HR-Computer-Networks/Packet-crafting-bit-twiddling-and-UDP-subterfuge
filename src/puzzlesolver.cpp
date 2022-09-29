@@ -132,6 +132,44 @@ unsigned short checksum2(const char *buf, unsigned size)
 	return ~t3;
 }
 
+uint16_t udp_checksum(const void *buffer, size_t length, in_addr_t src_addr, in_addr_t dest_addr)
+{
+    const uint16_t *buf = (const uint16_t *) buffer; /* treat input as bunch of uint16_t's */
+    uint16_t *src_ip = (uint16_t *) &src_addr; 
+    uint16_t *dest_ip = (uint16_t *)&dest_addr;
+    uint32_t sum;
+    size_t len = length;
+
+    sum = 0; 
+
+    /* fold the carry bits for the buffer */
+    while (length > 1) {
+        sum += *buf++;
+        if (sum & 0x80000000)
+            sum = (sum & 0xFFFF) + (sum >> 16); /* fold  carries */
+        length -= 2;
+    }
+
+    if(length & 1)
+        sum += *((uint8_t *)buf); // add the padding if packet length is odd */
+
+    /* inject checksum of the pseudo-header */
+    sum += *(src_ip++);
+    sum += *(src_ip);
+
+    sum += *(dest_ip++);
+    sum += *(dest_ip);
+
+    sum += htons(IPPROTO_UDP); /* protocol info */
+    sum += htons(len); /* original length! */
+
+    /* fold any carry bits created by adding header sums */
+    while(sum >> 16)
+        sum = (sum & 0xFFFF) + (sum >> 16);
+
+    return (uint16_t)(~sum);
+}
+
 // generates random string of length len
 // used for finding UDP checksum
 string gen_random(const int len) {
@@ -333,7 +371,7 @@ void solve_evil_bit(int sockfd, int portno) {
 
 
     // calculate checksum using pseudo header
-    udp->uh_sum = checksum2(pseudogram , psize);
+    udp->uh_sum = htons(udp_checksum(udp, sizeof(struct udphdr), own_addr.sin_addr.s_addr, serv_addr.sin_addr.s_addr));
 	
     // for MacOS from Piazza
     int optVal = 1;
