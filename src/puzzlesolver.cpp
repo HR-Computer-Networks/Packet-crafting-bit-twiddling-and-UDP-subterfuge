@@ -1,10 +1,3 @@
-// current ports:
-
-// checksum: 4092
-// evil bit: 4044
-// secret port: 4071 (= 4028)
-// oracle: 4021
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -421,7 +414,7 @@ void solve_evil_bit(int sockfd, int portno) {
 int main(int argc, char **argv) {
 	// should be given 2 arguments exactly: IP address, port
 	// all other arguments ignored
-	if(argc<4) { 
+	if(argc < 4) { 
 		printf("usage: server <serverip> <port_1> <port_2> <port_3> <port_4>\n"); 
 		exit(1);
 	}
@@ -471,7 +464,23 @@ int main(int argc, char **argv) {
     // solve_group_msg(sock_fd, ports[0], given_checksum, &serv_addr.sin_addr);
 
 
-    printf("Solving evil bit port... \n");
+    // Port containing the hidden port with message about the employee and the boss
+    get_udp_response(sock_fd, ports[2], probe_msg);
+    // char hiddenport1[] = {buffer[strlen(buffer)-5], buffer[strlen(buffer)-4], buffer[strlen(buffer)-3], buffer[strlen(buffer)-2]};
+    char hiddenport1[4];
+    memset(hiddenport1, '\0', 4);
+
+    char* p_port1;
+    p_port1 = strrchr(buffer, 's');
+    p_port1 = p_port1 + 2;
+
+    memcpy(hiddenport1, p_port1, 4);
+    printf("Hidden port number one is: %s \n", hiddenport1);
+
+
+    printf("\nSolving evil bit port... \n");
     get_udp_response(sock_fd, ports[1], probe_msg);
+
+
     solve_evil_bit(sock_fd, ports[1]);
 }
