@@ -435,24 +435,29 @@ int main(int argc, char **argv) {
         exit(0);
     }
 
+    // check if last argument is integer
+    char *endptr;
+    const long int argument = strtol (argv[5], &endptr, 10);
+
     // Secret phrase was passed
-    if (argc > 6) {
+    if (endptr[0] != '\0') {
         int oracleport = atoi(argv[2]);
         int hidden1 = atoi(argv[3]);
         int hidden2 = atoi(argv[4]);
 
-        char phrase[] = "Ennyn Durin Aran Moria. Pedo Mellon a Minno. Im Narvi hain echant. Celebrimbor o Eregion teithant i thiw hin.";
+        char* secret_phrase = argv[5];
+        // cout << secret_phrase << endl;
 
         string oracle_msg = to_string(hidden1) + ", " + to_string(hidden2);
         char *c_msg = new char[oracle_msg.length()+1];
         strcpy(c_msg, oracle_msg.c_str());
         get_udp_response(sock_fd, oracleport, c_msg);
 
-        get_udp_response(sock_fd, 4014, phrase);
-        get_udp_response(sock_fd, 4028, phrase);
-        get_udp_response(sock_fd, 4028, phrase);
-        get_udp_response(sock_fd, 4028, phrase);
-        get_udp_response(sock_fd, 4014, phrase);
+        get_udp_response(sock_fd, 4014, secret_phrase);
+        get_udp_response(sock_fd, 4028, secret_phrase);
+        get_udp_response(sock_fd, 4028, secret_phrase);
+        get_udp_response(sock_fd, 4028, secret_phrase);
+        get_udp_response(sock_fd, 4014, secret_phrase);
     }
 
     // 4 puzzle ports passed
