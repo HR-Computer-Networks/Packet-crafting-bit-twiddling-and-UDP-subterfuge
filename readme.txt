@@ -9,9 +9,8 @@ the second part runs it with the IP address and the range of the
 ports we want to scan.
 ----------------------------------------------------------------
 WARNING: This next part seems to work only on MacOS
-
 PART 2: Puzzle port
-
+    
 To run part two, use the following command:
 
 make puzzlesolver && ./puzzlesolver 130.208.242.120 port1 port2 
@@ -31,10 +30,10 @@ run it multiple time if a timeout appears.
 Also, we did not implement anything to recognize the type of 
 port we are looking at, so everytime we are assuming that the 
 types are in a premade order, which is:
-1)
-2)
-3)
-4)
+1) Boss port 
+2) Evil bit port
+3) Checksum port 
+4) Oracle port
 ----------------------------------------------------------------
 PART 3: Knocking
 
@@ -47,3 +46,8 @@ the order in which to knock the ports.
 We send UDP packets containing the secret phrase in the order 
 given before, and at the end we receive a message 
 "you may enter"
+
+Point 3 is implemented and works as expected. Passing the 
+correct ports from the terminal gives the expected results.
+Might be necessary to run it more than once in case of UDP
+losses or network errors.
