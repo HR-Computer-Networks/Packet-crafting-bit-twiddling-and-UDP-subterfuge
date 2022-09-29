@@ -1,3 +1,7 @@
+// boss port: 4071
+// oracle: 4021
+// hidden1: 4028
+// hidden2: 4014
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -51,12 +55,11 @@ void get_udp_response(int sock_fd, int portno, char* msg) {
 
     struct timeval tv;
     tv.tv_usec = 0;
-    tv.tv_sec = 10.0;
+    tv.tv_sec = 5.0;
 
     recVal = select(sock_fd + 1, &rfds, NULL, NULL, &tv);
     if (recVal == 0) {
         cout << "Timeout" << endl;
-        exit(0);
     }
     else if (recVal == -1) {
         cout << "Error" << endl;
@@ -409,85 +412,107 @@ void solve_evil_bit(int sockfd, int portno) {
     }
 }
 
-
 int main(int argc, char **argv) {
-	// should be given 2 arguments exactly: IP address, port
+
 	// all other arguments ignored
-	if(argc < 4) { 
-		printf("usage: server <serverip> <port_1> <port_2> <port_3> <port_4>\n"); 
-        printf("alternate usage: ");
+	if(argc < 5) { 
+		printf("usage: <serverip> <port_1> <port_2> <port_3> <port_4>\n"); 
+        printf("alternate usage: <IP address> <oracleport> <hiddenport1> <hiddenport2> <secretphrase>");
 		exit(1);
 	}
-    int ports[] = { atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]) };
-    // only works with ip address, not with hostname
-	char *server_ip = argv[1];
 
+    char *server_ip = argv[1];
     // set block of memory
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET ;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET ;
 
     int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // UDP
 
     // Need to know the IP address of the server we are connecting t
-	// stores the IP address in binary form in serv_addr.sin_addr
-	if( inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0) {
-		perror(" failed to set socket address");
-		exit(0);
-	}
+    // stores the IP address in binary form in serv_addr.sin_addr
+    if( inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0) {
+        perror(" failed to set socket address");
+        exit(0);
+    }
 
-    // ports[0] should be the boss problem
-    // ports[1] the evil bit problem
-    // ports[2] the checksum problem
-    // ports[3] the oracle
-    printf("Relevant ports: %i, %i, %i, %i \n", ports[0], ports[1], ports[2], ports[3]);
-    char probe_msg[] = "test";
+    // Secret phrase was passed
+    if (argc > 6) {
+        int oracleport = atoi(argv[2]);
+        int hidden1 = atoi(argv[3]);
+        int hidden2 = atoi(argv[4]);
 
-    // The first passed port contains the hidden port with message about the employee and the boss
-    get_udp_response(sock_fd, ports[0], probe_msg);
-    char hiddenport1[4];
-    memset(hiddenport1, '\0', 4);
+        char phrase[] = "Ennyn Durin Aran Moria. Pedo Mellon a Minno. Im Narvi hain echant. Celebrimbor o Eregion teithant i thiw hin.";
 
-    char* p_port1;
-    p_port1 = strrchr(buffer, 's');
-    p_port1 = p_port1 + 2;
+        string oracle_msg = to_string(hidden1) + ", " + to_string(hidden2);
+        char *c_msg = new char[oracle_msg.length()+1];
+        strcpy(c_msg, oracle_msg.c_str());
+        get_udp_response(sock_fd, oracleport, c_msg);
 
-    memcpy(hiddenport1, p_port1, 4);
-    printf("Hidden port number one is: %s \n", hiddenport1);
+        get_udp_response(sock_fd, 4014, phrase);
+        get_udp_response(sock_fd, 4028, phrase);
+        get_udp_response(sock_fd, 4028, phrase);
+        get_udp_response(sock_fd, 4028, phrase);
+        get_udp_response(sock_fd, 4014, phrase);
+    }
 
+    // 4 puzzle ports passed
+    else {
+        int ports[] = { atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]) };
 
-    // second passed port is the evil bit problem
-    printf("\nSolving evil bit port... \n");
-    get_udp_response(sock_fd, ports[1], probe_msg);
-    solve_evil_bit(sock_fd, ports[1]);
+        // ports[0] should be the boss problem
+        // ports[1] the evil bit problem
+        // ports[2] the checksum problem
+        // ports[3] the oracle
+        printf("Relevant ports: %i, %i, %i, %i \n", ports[0], ports[1], ports[2], ports[3]);
+        char probe_msg[] = "test";
 
+        // The first passed port contains the hidden port with message about the employee and the boss
+        get_udp_response(sock_fd, ports[0], probe_msg);
+        char hiddenport1[4];
+        memset(hiddenport1, '\0', 4);
 
-    // The third passed port is the checksum problem
+        char* p_port1;
+        p_port1 = strrchr(buffer, 's');
+        p_port1 = p_port1 + 2;
 
-    printf("\nSolving checksum problem port... \n");
-    char group_msg[] = "$group_50$";
-    get_udp_response(sock_fd, ports[2], group_msg);
-
-    // The last 6 bytes contain the relevant information in byte order
-    // get the last 6 bytes by finding the end of the message
-    // which is closing parenthesis
-    char * pch;
-    pch=strrchr(buffer,')');
-
-    // we want to start from the next character
-    pch = pch + 1;
-
-    unsigned short* given_checksum = new unsigned short;
-    struct in_addr* given_address = new in_addr;
-
-    memcpy(given_checksum, pch, sizeof(unsigned short));
-    pch = pch + sizeof(unsigned short);
-    memcpy(given_address, pch, sizeof(in_addr));
-
-    printf("\n Probing the oracle \n");
-    solve_group_msg(sock_fd, ports[2], given_checksum, &serv_addr.sin_addr);
+        memcpy(hiddenport1, p_port1, 4);
+        printf("Hidden port number one is: %s \n", hiddenport1);
 
 
-    // This probes the oracle
-    get_udp_response(sock_fd, ports[3], probe_msg);
+        // second passed port is the evil bit problem
+        printf("\nSolving evil bit port... \n");
+        get_udp_response(sock_fd, ports[1], probe_msg);
+        solve_evil_bit(sock_fd, ports[1]);
+
+
+        // The third passed port is the checksum problem
+
+        printf("\nSolving checksum problem port... \n");
+        char group_msg[] = "$group_50$";
+        get_udp_response(sock_fd, ports[2], group_msg);
+
+        // The last 6 bytes contain the relevant information in byte order
+        // get the last 6 bytes by finding the end of the message
+        // which is closing parenthesis
+        char * pch;
+        pch=strrchr(buffer,')');
+
+        // we want to start from the next character
+        pch = pch + 1;
+
+        unsigned short* given_checksum = new unsigned short;
+        struct in_addr* given_address = new in_addr;
+
+        memcpy(given_checksum, pch, sizeof(unsigned short));
+        pch = pch + sizeof(unsigned short);
+        memcpy(given_address, pch, sizeof(in_addr));
+
+        printf("\n Probing the oracle \n");
+        solve_group_msg(sock_fd, ports[2], given_checksum, &serv_addr.sin_addr);
+
+
+        // This probes the oracle
+        get_udp_response(sock_fd, ports[3], probe_msg);
+    }
 
 }
